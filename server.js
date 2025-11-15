@@ -77,7 +77,7 @@ app.get('/api/status', (req, res) => {
 
 // Mount routes
 app.use('/api/auth', require('./routes/auth'));
-// app.use('/api/admin', require('./routes/admin'));     // To be created in next step
+app.use('/api/admin', require('./routes/admin'));     
 app.use('/api/teacher', require('./routes/teacher')); 
 // app.use('/api/student', require('./routes/student')); // To be created in next step
 
