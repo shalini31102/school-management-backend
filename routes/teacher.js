@@ -6,6 +6,8 @@ const {
   getAttendanceHistory,
   getClassStudents,
   markMultipleAttendance,
+  assignTask,
+  getMyTasks,
 } = require('../controllers/teacherController');
 const { protect, authorize } = require('../middleware/auth');
 
@@ -20,5 +22,9 @@ router.get('/attendance/history/:class/:section', getAttendanceHistory);
 
 // Student routes
 router.get('/students/:class/:section', getClassStudents);
+
+// Task routes
+router.post('/tasks/assign', assignTask);
+router.get('/tasks/my-tasks', getMyTasks);
 
 module.exports = router;

@@ -1,5 +1,6 @@
 // controllers/teacherController.js
-const { Student, Attendance, Teacher } = require('../models');
+const { Student, Attendance, Teacher, Task, TaskSubmission } = require('../models');
+
 
 /**
  * @desc    Mark attendance by scanning QR code
@@ -254,10 +255,141 @@ const markMultipleAttendance = async (req, res) => {
     });
   }
 };
+/**
+ * @desc    Assign task to class
+ * @route   POST /api/teacher/tasks/assign
+ * @access  Private (Teacher)
+ */
+const assignTask = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      subject,
+      dueDate,
+      totalMarks,
+      difficulty,
+      instructions,
+      teacherId,
+      targetClass,
+      targetSection,
+    } = req.body;
+
+    // Validate required fields
+    if (!title || !description || !subject || !dueDate || !teacherId || !targetClass || !targetSection) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields',
+      });
+    }
+
+    // Get all students in the target class
+    const students = await Student.find({
+      class: targetClass,
+      section: targetSection,
+      isActive: true,
+    });
+
+    if (students.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No students found in this class',
+      });
+    }
+
+    const studentIds = students.map(s => s._id);
+
+    // Create task
+    const task = await Task.create({
+      title,
+      description,
+      type: 'assignment',
+      subject,
+      assignedBy: teacherId,
+      assignedTo: studentIds,
+      targetClass,
+      targetSection,
+      dueDate: new Date(dueDate),
+      totalMarks: totalMarks || 10,
+      difficulty: difficulty || 'medium',
+      instructions: instructions || undefined,
+      isPersonalized: false,
+      isForFreePeriod: false,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Task assigned successfully',
+      data: {
+        task,
+        studentsCount: studentIds.length,
+      },
+    });
+  } catch (error) {
+    console.error('Assign task error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error assigning task',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Get tasks assigned by teacher
+ * @route   GET /api/teacher/tasks/my-tasks
+ * @access  Private (Teacher)
+ */
+const getMyTasks = async (req, res) => {
+  try {
+    const teacherId = req.user.profileId;
+
+    const tasks = await Task.find({
+      assignedBy: teacherId,
+      isActive: true,
+    })
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    // Get submission counts for each task
+    const tasksWithStats = await Promise.all(
+      tasks.map(async (task) => {
+        const totalAssigned = task.assignedTo.length;
+        const submissions = await TaskSubmission.countDocuments({
+          taskId: task._id,
+        });
+
+        return {
+          ...task.toObject(),
+          stats: {
+            totalAssigned,
+            submissions,
+            pending: totalAssigned - submissions,
+          },
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      count: tasksWithStats.length,
+      data: tasksWithStats,
+    });
+  } catch (error) {
+    console.error('Get my tasks error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching tasks',
+      error: error.message,
+    });
+  }
+};
 
 module.exports = {
   scanQRAttendance,
   getAttendanceHistory,
   getClassStudents,
   markMultipleAttendance,
+  assignTask,
+  getMyTasks,
 };

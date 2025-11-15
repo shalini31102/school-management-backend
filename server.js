@@ -79,7 +79,7 @@ app.get('/api/status', (req, res) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));     
 app.use('/api/teacher', require('./routes/teacher')); 
-// app.use('/api/student', require('./routes/student')); // To be created in next step
+app.use('/api/student', require('./routes/student')); 
 
 // 404 handler
 app.use(notFound);

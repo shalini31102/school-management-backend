@@ -1,6 +1,4 @@
 // models/index.js
-// Central export file for all models
-
 const User = require('./User');
 const Student = require('./Student');
 const Teacher = require('./Teacher');
