@@ -4,15 +4,20 @@ const router = express.Router();
 const {
   addStudent,
   getAllStudents,
+  createTimetable,
+  getTimetable,
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/auth');
 
-// All routes require authentication and admin role
+// Protect all routes
 router.use(protect);
-router.use(authorize('admin'));
 
-// Student routes
-router.post('/students/add', addStudent);
-router.get('/students', getAllStudents);
+// Admin-only routes
+router.post('/students/add', authorize('admin'), addStudent);
+router.get('/students', authorize('admin'), getAllStudents);
+router.post('/timetable/create', authorize('admin'), createTimetable);
+
+// Timetable GET - Allow admin, teacher, and student
+router.get('/timetable/:class/:section', authorize('admin', 'teacher', 'student'), getTimetable);
 
 module.exports = router;
