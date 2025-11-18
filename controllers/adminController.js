@@ -20,6 +20,10 @@ const addStudent = async (req, res) => {
       dateOfBirth,
       gender,
       parentContact,
+      performanceLevel,
+      learningPace,
+      interests,
+      careerGoals,
     } = req.body;
 
     // Validate required fields

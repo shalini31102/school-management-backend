@@ -11,6 +11,8 @@ const Quiz = require('./Quiz');
 const QuizAttempt = require('./QuizAttempt');
 const SubstituteRequest = require('./SubstituteRequest');
 const StudentPerformance = require('./StudentPerformance');
+const FreePeriodTaskCompletion = require('./FreePeriodTaskCompletion'); 
+const CustomFreePeriodTask = require('./CustomFreePeriodTask');
 
 module.exports = {
   User,
@@ -24,5 +26,7 @@ module.exports = {
   Quiz,
   QuizAttempt,
   SubstituteRequest,
-  StudentPerformance
+  StudentPerformance,
+  FreePeriodTaskCompletion,
+  CustomFreePeriodTask,
 };
