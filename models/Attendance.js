@@ -21,12 +21,7 @@ const attendanceSchema = new mongoose.Schema({
   date: {
     type: Date,
     required: true,
-    default: function() {
-      // Set to start of day (midnight)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return today;
-    }
+    // REMOVED default function - controller handles it now
   },
   status: {
     type: String,
@@ -56,7 +51,7 @@ const attendanceSchema = new mongoose.Schema({
     type: Number,
     min: 1
   },
-  isModified: {
+  wasEdited: {
     type: Boolean,
     default: false
   },
@@ -86,7 +81,6 @@ attendanceSchema.index({ date: -1 });
 attendanceSchema.statics.markAttendance = async function(data) {
   const { studentId, status, markedBy, scanMethod, remarks } = data;
   
-  // Get student details
   const Student = mongoose.model('Student');
   const student = await Student.findById(studentId);
   
@@ -94,20 +88,24 @@ attendanceSchema.statics.markAttendance = async function(data) {
     throw new Error('Student not found');
   }
   
-  // Check if attendance already exists for today
+  // Use UTC date
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayDateOnly = new Date(Date.UTC(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+    0, 0, 0, 0
+  ));
   
   const existingAttendance = await this.findOne({
     studentId,
-    date: today
+    date: todayDateOnly
   });
   
   if (existingAttendance) {
-    // Update existing attendance
     const previousStatus = existingAttendance.status;
     existingAttendance.status = status;
-    existingAttendance.isModified = true;
+    existingAttendance.wasEdited = true;
     existingAttendance.modificationHistory.push({
       modifiedBy: markedBy,
       previousStatus,
@@ -118,12 +116,11 @@ attendanceSchema.statics.markAttendance = async function(data) {
     return await existingAttendance.save();
   }
   
-  // Create new attendance record
   return await this.create({
     studentId,
     class: student.class,
     section: student.section,
-    date: today,
+    date: todayDateOnly,
     status,
     markedBy,
     scanMethod,
@@ -153,8 +150,9 @@ attendanceSchema.statics.getAttendanceStats = async function(studentId, startDat
 
 // Method to get attendance for a date range
 attendanceSchema.statics.getClassAttendance = async function(className, section, date) {
-  const queryDate = new Date(date);
-  queryDate.setHours(0, 0, 0, 0);
+  // Parse date string correctly
+  const [year, month, day] = date.split('-').map(Number);
+  const queryDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
   
   return await this.find({
     class: className,

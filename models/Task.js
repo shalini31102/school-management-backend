@@ -97,6 +97,9 @@ taskSchema.index({ assignedTo: 1, dueDate: 1 });
 taskSchema.index({ targetClass: 1, targetSection: 1, dueDate: 1 });
 taskSchema.index({ assignedBy: 1, createdAt: -1 });
 taskSchema.index({ type: 1, isActive: 1 });
+// Composite indexes for common teacher/student dashboard queries
+taskSchema.index({ assignedBy: 1, isActive: 1 });
+taskSchema.index({ assignedTo: 1, isActive: 1 });
 
 // Virtual to check if task is overdue
 taskSchema.virtual('isOverdue').get(function() {

@@ -1,59 +1,73 @@
 // middleware/errorHandler.js
 
 /**
- * Global error handler middleware
+ * Central error-handler middleware.
+ *
+ * All errors forwarded via next(err) — including those from asyncHandler —
+ * are processed here into a consistent JSON response.
  */
 const errorHandler = (err, req, res, next) => {
-  let error = { ...err };
-  error.message = err.message;
+  // Log in development; keep logs clean in production
+  if (process.env.NODE_ENV !== 'production') {
+    console.error('[ErrorHandler]', err);
+  }
 
-  // Log error for debugging
-  console.error('Error:', err);
+  let statusCode = err.statusCode || 500;
+  let message    = err.message   || 'Server Error';
 
-  // Mongoose bad ObjectId
+  // ── Mongoose: bad ObjectId ───────────────────────────────────────────────
   if (err.name === 'CastError') {
-    const message = 'Resource not found';
-    error = { message, statusCode: 404 };
+    statusCode = 404;
+    message    = `Resource not found (invalid id: ${err.value})`;
   }
 
-  // Mongoose duplicate key error
+  // ── Mongoose: duplicate key ──────────────────────────────────────────────
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
-    const message = `${field} already exists`;
-    error = { message, statusCode: 400 };
+    const field = Object.keys(err.keyValue || {})[0] || 'field';
+    statusCode = 400;
+    message    = `${field} already exists`;
   }
 
-  // Mongoose validation error
+  // ── Mongoose: validation error ───────────────────────────────────────────
   if (err.name === 'ValidationError') {
-    const message = Object.values(err.errors).map(val => val.message).join(', ');
-    error = { message, statusCode: 400 };
+    statusCode = 400;
+    message    = Object.values(err.errors).map((e) => e.message).join(', ');
   }
 
-  // JWT errors
+  // ── JWT errors ───────────────────────────────────────────────────────────
   if (err.name === 'JsonWebTokenError') {
-    const message = 'Invalid token';
-    error = { message, statusCode: 401 };
+    statusCode = 401;
+    message    = 'Invalid token. Please log in again.';
   }
 
   if (err.name === 'TokenExpiredError') {
-    const message = 'Token expired';
-    error = { message, statusCode: 401 };
+    statusCode = 401;
+    message    = 'Token expired. Please log in again.';
   }
 
-  res.status(error.statusCode || 500).json({
-    success: false,
-    message: error.message || 'Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
+  // ── Groq / external API errors ───────────────────────────────────────────
+  if (err.name === 'GroqError' || err?.error?.type === 'invalid_request_error') {
+    statusCode = 502;
+    message    = 'AI service error. Please try again.';
+  }
+
+  const body = { success: false, message };
+
+  // Attach stack trace only in development
+  if (process.env.NODE_ENV === 'development') {
+    body.stack = err.stack;
+  }
+
+  return res.status(statusCode).json(body);
 };
 
 /**
- * Handle 404 routes
+ * 404 handler — must be registered AFTER all routes.
  */
 const notFound = (req, res, next) => {
-  const error = new Error(`Not Found - ${req.originalUrl}`);
-  res.status(404);
-  next(error);
+  const err = new Error(`Not Found - ${req.originalUrl}`);
+  err.statusCode = 404;
+  next(err);
 };
 
 module.exports = { errorHandler, notFound };

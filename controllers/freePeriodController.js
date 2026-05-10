@@ -1,568 +1,371 @@
 // controllers/freePeriodController.js
-const { Student, Task, Timetable, FreePeriodTaskCompletion, CustomFreePeriodTask } = require('../models');
+const Groq = require('groq-sdk');
+const { Student, Timetable, FreePeriodTaskCompletion, DailyStudyPlan, ClassFreePeriodSession, Task, TaskSubmission } = require('../models');
+const asyncHandler = require('../utils/asyncHandler');
+const { success, error } = require('../utils/apiResponse');
+const notificationService = require('../utils/notificationService');
 
-/**
- * Task library organized by interests and career goals
- */
-const TASK_LIBRARY = {
-  // Interest-based tasks
-  interests: {
-    coding: [
-      {
-        title: 'Build a Simple Calculator',
-        description: 'Create a basic calculator using HTML, CSS, and JavaScript',
-        difficulty: 'easy',
-        estimatedTime: 30,
-        subject: 'Computer Science',
-        resources: ['MDN Web Docs', 'W3Schools'],
-      },
-      {
-        title: 'Learn Python Basics',
-        description: 'Complete an interactive Python tutorial on variables and loops',
-        difficulty: 'medium',
-        estimatedTime: 45,
-        subject: 'Programming',
-        resources: ['Python.org', 'Codecademy'],
-      },
-      {
-        title: 'Debug Challenge',
-        description: 'Find and fix 5 bugs in provided code snippets',
-        difficulty: 'hard',
-        estimatedTime: 40,
-        subject: 'Computer Science',
-        resources: ['LeetCode', 'HackerRank'],
-      },
-    ],
-    art: [
-      {
-        title: 'Sketch Practice: Perspective',
-        description: 'Practice one-point and two-point perspective drawing',
-        difficulty: 'easy',
-        estimatedTime: 30,
-        subject: 'Art',
-        resources: ['YouTube Art Tutorials', 'Drawabox.com'],
-      },
-      {
-        title: 'Color Theory Study',
-        description: 'Learn about complementary colors and create a color wheel',
-        difficulty: 'medium',
-        estimatedTime: 45,
-        subject: 'Art',
-        resources: ['Khan Academy', 'Color Matters'],
-      },
-    ],
-    music: [
-      {
-        title: 'Rhythm Practice',
-        description: 'Practice clapping different rhythm patterns',
-        difficulty: 'easy',
-        estimatedTime: 20,
-        subject: 'Music',
-        resources: ['musictheory.net', 'YouTube'],
-      },
-      {
-        title: 'Learn a New Song',
-        description: 'Learn the basics of a popular song on your instrument',
-        difficulty: 'medium',
-        estimatedTime: 45,
-        subject: 'Music',
-        resources: ['Ultimate Guitar', 'Flowkey'],
-      },
-    ],
-    sports: [
-      {
-        title: 'Fitness Circuit',
-        description: 'Complete a 15-minute bodyweight workout circuit',
-        difficulty: 'easy',
-        estimatedTime: 15,
-        subject: 'Physical Education',
-        resources: ['Nike Training Club', 'FitnessBlender'],
-      },
-      {
-        title: 'Learn Sports Rules',
-        description: 'Study the official rules of your favorite sport',
-        difficulty: 'medium',
-        estimatedTime: 30,
-        subject: 'Sports',
-        resources: ['Official Sport Websites'],
-      },
-    ],
-    reading: [
-      {
-        title: 'Speed Reading Practice',
-        description: 'Practice speed reading techniques with a short article',
-        difficulty: 'easy',
-        estimatedTime: 25,
-        subject: 'English',
-        resources: ['Spreeder', 'ReadTheory'],
-      },
-      {
-        title: 'Book Summary',
-        description: 'Read a chapter and write a brief summary',
-        difficulty: 'medium',
-        estimatedTime: 45,
-        subject: 'English',
-        resources: ['Project Gutenberg', 'SparkNotes'],
-      },
-    ],
-    science: [
-      {
-        title: 'Science Experiment Video',
-        description: 'Watch and understand a famous science experiment',
-        difficulty: 'easy',
-        estimatedTime: 20,
-        subject: 'Science',
-        resources: ['Khan Academy', 'Crash Course'],
-      },
-      {
-        title: 'Periodic Table Quiz',
-        description: 'Test your knowledge of elements and their properties',
-        difficulty: 'medium',
-        estimatedTime: 30,
-        subject: 'Chemistry',
-        resources: ['ptable.com', 'Quizlet'],
-      },
-    ],
-  },
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-  // Career-oriented tasks
-  careers: {
-    'software-engineer': [
-      {
-        title: 'Algorithm Challenge',
-        description: 'Solve 3 easy-level coding problems',
-        difficulty: 'medium',
-        estimatedTime: 45,
-        subject: 'Computer Science',
-        resources: ['LeetCode', 'CodeChef'],
-      },
-      {
-        title: 'Learn Git Basics',
-        description: 'Understand version control with Git and GitHub',
-        difficulty: 'easy',
-        estimatedTime: 30,
-        subject: 'Programming',
-        resources: ['GitHub Learning Lab', 'Git-SCM'],
-      },
-    ],
-    doctor: [
-      {
-        title: 'Human Anatomy Study',
-        description: 'Learn about a specific body system in detail',
-        difficulty: 'medium',
-        estimatedTime: 40,
-        subject: 'Biology',
-        resources: ['Khan Academy', 'Visible Body'],
-      },
-      {
-        title: 'Medical Terminology',
-        description: 'Learn 20 new medical terms and their meanings',
-        difficulty: 'easy',
-        estimatedTime: 25,
-        subject: 'Biology',
-        resources: ['Quizlet Medical Terms'],
-      },
-    ],
-    engineer: [
-      {
-        title: 'Physics Problem Set',
-        description: 'Solve practical physics problems related to engineering',
-        difficulty: 'medium',
-        estimatedTime: 35,
-        subject: 'Physics',
-        resources: ['Khan Academy Physics', 'HyperPhysics'],
-      },
-      {
-        title: 'CAD Design Intro',
-        description: 'Learn basic CAD software interface and tools',
-        difficulty: 'easy',
-        estimatedTime: 30,
-        subject: 'Engineering',
-        resources: ['Tinkercad', 'Fusion 360'],
-      },
-    ],
-    teacher: [
-      {
-        title: 'Lesson Plan Practice',
-        description: 'Create a simple lesson plan for teaching a concept',
-        difficulty: 'medium',
-        estimatedTime: 40,
-        subject: 'Education',
-        resources: ['Edutopia', 'TeachThought'],
-      },
-    ],
-    artist: [
-      {
-        title: 'Portfolio Piece',
-        description: 'Create a small artwork for your portfolio',
-        difficulty: 'medium',
-        estimatedTime: 45,
-        subject: 'Art',
-        resources: ['Behance', 'ArtStation'],
-      },
-    ],
-    entrepreneur: [
-      {
-        title: 'Business Idea Brainstorm',
-        description: 'Identify a problem and brainstorm business solutions',
-        difficulty: 'easy',
-        estimatedTime: 30,
-        subject: 'Business Studies',
-        resources: ['Y Combinator', 'Startup School'],
-      },
-    ],
-  },
-
-  // Performance-level tasks
-  performance: {
-    weak: [
-      {
-        title: 'Foundation Review',
-        description: 'Review and practice basic concepts from previous chapters',
-        difficulty: 'easy',
-        estimatedTime: 30,
-        subject: 'General',
-      },
-      {
-        title: 'Study Technique Practice',
-        description: 'Learn and practice effective study methods',
-        difficulty: 'easy',
-        estimatedTime: 25,
-        subject: 'General',
-      },
-    ],
-    medium: [
-      {
-        title: 'Practice Problem Set',
-        description: 'Solve medium-difficulty problems to strengthen understanding',
-        difficulty: 'medium',
-        estimatedTime: 35,
-        subject: 'General',
-      },
-      {
-        title: 'Concept Connection',
-        description: 'Connect concepts across different subjects',
-        difficulty: 'medium',
-        estimatedTime: 30,
-        subject: 'General',
-      },
-    ],
-    strong: [
-      {
-        title: 'Advanced Challenge',
-        description: 'Tackle advanced problems and olympiad-level questions',
-        difficulty: 'hard',
-        estimatedTime: 45,
-        subject: 'General',
-      },
-      {
-        title: 'Peer Teaching',
-        description: 'Prepare to explain a complex topic to classmates',
-        difficulty: 'hard',
-        estimatedTime: 40,
-        subject: 'General',
-      },
-    ],
-  },
-};
-
-/**
- * Get current free period if any
- */
-const getCurrentFreePeriod = async (studentId) => {
-  try {
-    const student = await Student.findById(studentId);
-    if (!student) return null;
-
-    const timetable = await Timetable.findOne({
-      class: student.class,
-      section: student.section,
-      isActive: true,
-    });
-
-    if (!timetable) return null;
-
-    // Get current day and time
-    const now = new Date();
-    const dayIndex = now.getDay();
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const today = dayNames[dayIndex];
-
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    // Find today's schedule
-    const todaySchedule = timetable.schedule.find(s => s.day === today);
-    if (!todaySchedule) return null;
-
-    // Find current period
-    const currentPeriod = todaySchedule.periods.find(period => {
-      return currentTime >= period.startTime && 
-             currentTime <= period.endTime && 
-             period.isFree === true;
-    });
-
-    return currentPeriod;
-  } catch (error) {
-    console.error('Get current free period error:', error);
-    return null;
-  }
-};
-
-const generateTaskSuggestions = async (student, freePeriod) => {
-  const suggestions = [];
-  const availableTime = freePeriod ? 45 : 30; // minutes
-
-  // 1. Get custom tasks from teachers (50% priority)
-  const customTasks = await CustomFreePeriodTask.find({
+const getActiveFreePeriod = async (student) => {
+  const timetable = await Timetable.findOne({
+    class:    student.class,
+    section:  student.section,
     isActive: true,
-    $or: [
-      // Tasks for all students
-      { targetClass: null, targetSection: null },
-      // Tasks for specific class/section
-      { targetClass: student.class, targetSection: student.section },
-      // Tasks for this specific student
-      { targetStudents: student._id },
+  }).lean();
+  if (!timetable) return null;
+
+  const now = new Date();
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const today       = dayNames[now.getDay()];
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  const todaySchedule = timetable.schedule.find((s) => s.day === today);
+  if (!todaySchedule) return null;
+
+  return (
+    todaySchedule.periods.find(
+      (p) => p.isFree === true && currentTime >= p.startTime && currentTime <= p.endTime
+    ) || null
+  );
+};
+
+const generateAISuggestions = async (student, freePeriodSubject, duration = null) => {
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+  const systemPrompt =
+    'You are an educational AI assistant for a school management system. ' +
+    'Generate personalized, actionable learning tasks for students during free periods. ' +
+    'Respond with valid JSON only — no markdown, no explanation outside the JSON.';
+
+  const durationLine = duration ? `- Available time: ${duration} minutes (all tasks must fit within this time)` : '';
+
+  const userPrompt = `Generate exactly 6 personalized free-period task suggestions for this student.
+
+Student Profile:
+- Name: ${student.name}
+- Class: ${student.class}, Section: ${student.section}
+- Interests: ${student.interests?.length ? student.interests.join(', ') : 'not specified'}
+- Career Goals: ${student.careerGoals?.length ? student.careerGoals.join(', ') : 'not specified'}
+- Performance Level: ${student.performanceLevel || 'medium'}
+- Learning Pace: ${student.learningPace || 'medium'}
+${freePeriodSubject ? `- Free Period Subject: ${freePeriodSubject}` : ''}
+${durationLine}
+
+Rules:
+1. Return exactly 6 tasks.
+2. Each task must be completable independently in 20–45 minutes (or within duration if provided).
+3. Calibrate difficulty to performance level.
+4. If a free period subject is provided, at least 2 tasks should relate to it.
+5. matchReason must be one sentence explaining why this task suits this student.
+
+Respond with exactly this JSON shape:
+{
+  "suggestions": [
+    {
+      "title": "concise task title",
+      "description": "clear description",
+      "subject": "subject area",
+      "estimatedTime": 30,
+      "difficulty": "easy",
+      "matchReason": "one sentence"
+    }
+  ]
+}`;
+
+  const response = await groq.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user',   content: userPrompt },
     ],
-    estimatedTime: { $lte: availableTime },
-  }).limit(3);
-
-  customTasks.forEach(task => {
-    suggestions.push({
-      title: task.title,
-      description: task.description,
-      difficulty: task.difficulty,
-      estimatedTime: task.estimatedTime,
-      subject: task.subject,
-      resources: task.resources,
-      instructions: task.instructions,
-      category: task.category,
-      matchReason: '✨ Custom task from your teacher',
-      priority: 4, // Highest priority
-      isCustom: true,
-    });
+    response_format: { type: 'json_object' },
+    temperature: 0.7,
+    max_tokens:  1500,
   });
 
-  // 2. Interest-based tasks (40% weight)
-  if (student.interests && student.interests.length > 0) {
-    student.interests.forEach(interest => {
-      const interestTasks = TASK_LIBRARY.interests[interest.toLowerCase()];
-      if (interestTasks) {
-        const suitableTasks = interestTasks.filter(
-          task => task.estimatedTime <= availableTime
-        );
-        suggestions.push(...suitableTasks.map(task => ({
-          ...task,
-          category: 'interest',
-          matchReason: `Based on your interest in ${interest}`,
-          priority: 2,
-        })));
-      }
-    });
+  const parsed = JSON.parse(response.choices[0].message.content);
+  if (!Array.isArray(parsed.suggestions) || parsed.suggestions.length === 0) {
+    throw new Error('Groq returned an unexpected response format');
   }
-
-  // 3. Career-oriented tasks (30% weight)
-  if (student.careerGoals && student.careerGoals.length > 0) {
-    student.careerGoals.forEach(career => {
-      const careerTasks = TASK_LIBRARY.careers[career.toLowerCase()];
-      if (careerTasks) {
-        const suitableTasks = careerTasks.filter(
-          task => task.estimatedTime <= availableTime
-        );
-        suggestions.push(...suitableTasks.map(task => ({
-          ...task,
-          category: 'career',
-          matchReason: `Aligned with your career goal: ${career}`,
-          priority: 3,
-        })));
-      }
-    });
-  }
-
-  // 4. Performance-level tasks (30% weight)
-  const performanceLevel = student.performanceLevel || 'medium';
-  const performanceTasks = TASK_LIBRARY.performance[performanceLevel];
-  if (performanceTasks) {
-    suggestions.push(...performanceTasks.map(task => ({
-      ...task,
-      category: 'improvement',
-      matchReason: `Tailored for your current performance level`,
-      priority: 1,
-    })));
-  }
-
-  // Sort by priority (higher first) and shuffle within same priority
-  const sorted = suggestions.sort((a, b) => {
-    if (b.priority !== a.priority) return b.priority - a.priority;
-    return Math.random() - 0.5;
-  });
-
-  // Return top 8 suggestions (increased from 6 to include custom tasks)
-  return sorted.slice(0, 8);
+  return parsed.suggestions.slice(0, 6);
 };
 
 /**
- * @desc    Get smart task suggestions for free period
- * @route   GET /api/student/free-period-suggestions
+ * Generate and store a daily study plan for a student.
+ * Called by the 7AM cron job and on-demand if no plan exists.
+ */
+const generateDailyPlanForStudent = async (student) => {
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+  // Fetch pending tasks + recent grades in parallel
+  const [pendingTasks, recentGrades] = await Promise.allSettled([
+    Task.find({ assignedTo: student._id, isActive: true })
+      .sort({ dueDate: 1 }).limit(10).lean()
+      .then(async (tasks) => {
+        const taskIds = tasks.map((t) => t._id);
+        const submitted = await TaskSubmission.find({ taskId: { $in: taskIds }, studentId: student._id }).distinct('taskId');
+        const submittedSet = new Set(submitted.map(String));
+        return tasks.filter((t) => !submittedSet.has(String(t._id)));
+      }),
+    TaskSubmission.find({ studentId: student._id, status: 'graded' })
+      .populate('taskId', 'subject totalMarks')
+      .sort({ gradedAt: -1 }).limit(20).lean(),
+  ]);
+
+  const tasks = pendingTasks.status === 'fulfilled' ? pendingTasks.value : [];
+  const grades = recentGrades.status === 'fulfilled' ? recentGrades.value : [];
+
+  // Compute weak subjects
+  const subjectMap = {};
+  grades.forEach((g) => {
+    const subj = g.taskId?.subject || 'General';
+    if (!subjectMap[subj]) subjectMap[subj] = { total: 0, count: 0 };
+    subjectMap[subj].total += (g.score / (g.taskId?.totalMarks || 10)) * 100;
+    subjectMap[subj].count++;
+  });
+  const weakSubjects = Object.entries(subjectMap)
+    .map(([s, d]) => ({ subject: s, avg: d.total / d.count }))
+    .filter((s) => s.avg < 60)
+    .map((s) => s.subject);
+
+  const pendingList = tasks.slice(0, 5).map((t) => `${t.title} (due ${new Date(t.dueDate).toLocaleDateString()})`).join('; ');
+  const weakList = weakSubjects.join(', ') || 'none';
+  const goalList = student.careerGoals?.join(', ') || 'not specified';
+
+  const userPrompt = `Generate a daily study plan with exactly 3 priority tasks for today.
+
+Student: ${student.name}, Class ${student.class}-${student.section}
+Performance: ${student.performanceLevel || 'medium'}, Pace: ${student.learningPace || 'medium'}
+Pending tasks (due soon): ${pendingList || 'none'}
+Weak subjects (below 60% avg): ${weakList}
+Career goals: ${goalList}
+Interests: ${student.interests?.join(', ') || 'not specified'}
+
+Focus priority: 1) help with pending deadlines, 2) improve weak subjects, 3) align with goals.
+Each task: specific, actionable, 20-60 minutes.
+
+Return this JSON:
+{
+  "tasks": [
+    {
+      "title": "task title",
+      "description": "what to do specifically",
+      "subject": "subject",
+      "estimatedTime": 30,
+      "difficulty": "medium",
+      "priority": 1
+    }
+  ]
+}`;
+
+  const response = await groq.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [
+      { role: 'system', content: 'You are an educational AI. Respond with valid JSON only.' },
+      { role: 'user',   content: userPrompt },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.6,
+    max_tokens: 800,
+  });
+
+  const parsed = JSON.parse(response.choices[0].message.content);
+  const planTasks = (parsed.tasks || []).slice(0, 3);
+
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
+
+  // Upsert: delete existing then create (avoids duplicate key on retry)
+  await DailyStudyPlan.deleteOne({ studentId: student._id, date: todayUTC });
+  const plan = await DailyStudyPlan.create({
+    studentId: student._id,
+    date:      todayUTC,
+    tasks:     planTasks,
+    aiContext: `pendingTasks:${pendingList}|weakSubjects:${weakList}`,
+    generatedAt: new Date(),
+  });
+
+  return plan;
+};
+
+// ── Route handlers ────────────────────────────────────────────────────────────
+
+/**
+ * @desc    Get AI-powered task suggestions (priority: class session → daily plan → on-demand)
+ * @route   GET /api/student/free-period-suggestions?duration=30
  * @access  Private (Student)
  */
-const getFreePeriodSuggestions = async (req, res) => {
-  try {
-    const studentId = req.user.profileId;
+const getFreePeriodSuggestions = asyncHandler(async (req, res) => {
+  const studentId = req.user.profileId;
+  const duration  = req.query.duration ? parseInt(req.query.duration, 10) : null;
 
-    // Get student data
-    const student = await Student.findById(studentId);
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: 'Student not found',
-      });
-    }
+  const student = await Student.findById(studentId).lean();
+  if (!student) return error(res, 404, 'Student not found');
 
-    // Check if currently in free period
-    const currentFreePeriod = await getCurrentFreePeriod(studentId);
+  // ── 1. Check active class free period session (teacher started) ──────────
+  const activeSession = await ClassFreePeriodSession.findOne({
+    class:    student.class,
+    section:  student.section.toUpperCase(),
+    isActive: true,
+    endsAt:   { $gt: new Date() },
+  }).lean();
 
-    // Generate suggestions
-    const suggestions = await generateTaskSuggestions(student, currentFreePeriod);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        isFreePeriod: !!currentFreePeriod,
-        currentPeriod: currentFreePeriod,
-        studentProfile: {
-          name: student.name,
-          performanceLevel: student.performanceLevel,
-          interests: student.interests,
-          careerGoals: student.careerGoals,
-          learningPace: student.learningPace,
-        },
-        suggestions,
-        totalSuggestions: suggestions.length,
+  if (activeSession) {
+    let tasks = activeSession.tasks;
+    if (duration) tasks = tasks.filter((t) => (t.estimatedTime || 0) <= duration);
+    return success(res, 200, 'Class session suggestions', {
+      source:       'class_session',
+      sessionInfo:  {
+        teacherNote:   activeSession.note,
+        missedSubject: activeSession.missedSubject,
+        duration:      activeSession.duration,
+        endsAt:        activeSession.endsAt,
+      },
+      isFreePeriod:  true,
+      suggestions:   tasks,
+      totalSuggestions: tasks.length,
+      studentProfile: {
+        name: student.name, performanceLevel: student.performanceLevel,
+        interests: student.interests, careerGoals: student.careerGoals, learningPace: student.learningPace,
       },
     });
-  } catch (error) {
-    console.error('Get suggestions error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error generating suggestions',
-      error: error.message,
+  }
+
+  // ── 2. Check today's daily plan ───────────────────────────────────────────
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
+  const dailyPlan = await DailyStudyPlan.findOne({ studentId, date: todayUTC }).lean();
+
+  if (dailyPlan) {
+    let tasks = dailyPlan.tasks;
+    if (duration) tasks = tasks.filter((t) => (t.estimatedTime || 0) <= duration);
+    if (!dailyPlan.isViewed) {
+      await DailyStudyPlan.updateOne({ _id: dailyPlan._id }, { isViewed: true });
+    }
+    return success(res, 200, 'Daily plan suggestions', {
+      source:          'daily_plan',
+      isFreePeriod:    !!(await getActiveFreePeriod(student)),
+      suggestions:     tasks,
+      totalSuggestions: tasks.length,
+      studentProfile: {
+        name: student.name, performanceLevel: student.performanceLevel,
+        interests: student.interests, careerGoals: student.careerGoals, learningPace: student.learningPace,
+      },
     });
   }
-};
 
+  // ── 3. Fallback: on-demand AI generation ─────────────────────────────────
+  const currentFreePeriod = await getActiveFreePeriod(student);
+  const freePeriodSubject  = currentFreePeriod?.subject || null;
+
+  const suggestions = await generateAISuggestions(student, freePeriodSubject, duration);
+
+  return success(res, 200, 'On-demand AI suggestions', {
+    source:          'ai_generated',
+    isFreePeriod:    !!currentFreePeriod,
+    currentPeriod:   currentFreePeriod,
+    suggestions,
+    totalSuggestions: suggestions.length,
+    studentProfile: {
+      name: student.name, performanceLevel: student.performanceLevel,
+      interests: student.interests, careerGoals: student.careerGoals, learningPace: student.learningPace,
+    },
+  });
+});
+
+/**
+ * @desc    Get today's daily AI study plan (generate on-demand if missing)
+ * @route   GET /api/student/daily-plan
+ * @access  Private (Student)
+ */
+const getDailyPlan = asyncHandler(async (req, res) => {
+  const studentId = req.user.profileId;
+
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
+
+  let plan = await DailyStudyPlan.findOne({ studentId, date: todayUTC }).lean();
+
+  if (!plan) {
+    const student = await Student.findById(studentId).lean();
+    if (!student) return error(res, 404, 'Student not found');
+    try {
+      plan = await generateDailyPlanForStudent(student);
+      plan = plan.toObject ? plan.toObject() : plan;
+    } catch (err) {
+      return error(res, 500, 'Could not generate daily plan: ' + err.message);
+    }
+  }
+
+  if (!plan.isViewed) {
+    await DailyStudyPlan.updateOne({ _id: plan._id }, { isViewed: true });
+  }
+
+  return success(res, 200, 'Daily plan fetched', plan);
+});
 
 /**
  * @desc    Mark a suggested task as completed
  * @route   POST /api/student/free-period-tasks/complete
  * @access  Private (Student)
  */
-const markTaskComplete = async (req, res) => {
-  try {
-    const studentId = req.user.profileId;
-    const {
-      taskTitle,
-      taskCategory,
-      difficulty,
-      subject,
-      estimatedTime,
-      rating,
-      notes,
-      wasHelpful,
-    } = req.body;
+const markTaskComplete = asyncHandler(async (req, res) => {
+  const studentId = req.user.profileId;
+  const { taskTitle, taskCategory, difficulty, subject, estimatedTime, rating, notes, wasHelpful } = req.body;
 
-    if (!taskTitle || !taskCategory || !difficulty || !estimatedTime) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields',
-      });
-    }
-
-    const completion = await FreePeriodTaskCompletion.create({
-      studentId,
-      taskTitle,
-      taskCategory,
-      difficulty,
-      subject: subject || 'General',
-      estimatedTime,
-      rating: rating || undefined,
-      notes: notes || undefined,
-      wasHelpful: wasHelpful !== undefined ? wasHelpful : true,
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Task marked as completed!',
-      data: completion,
-    });
-  } catch (error) {
-    console.error('Mark task complete error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error marking task as complete',
-      error: error.message,
-    });
+  if (!taskTitle || !taskCategory || !difficulty || !estimatedTime) {
+    return error(res, 400, 'Missing required fields');
   }
-};
+
+  const completion = await FreePeriodTaskCompletion.create({
+    studentId,
+    taskTitle,
+    taskCategory,
+    difficulty,
+    subject:    subject    || 'General',
+    estimatedTime,
+    rating:     rating     || undefined,
+    notes:      notes      || undefined,
+    wasHelpful: wasHelpful !== undefined ? wasHelpful : true,
+  });
+
+  return success(res, 201, 'Task marked as completed!', completion);
+});
 
 /**
- * @desc    Get student's completed tasks
+ * @desc    Get student's completed free-period tasks
  * @route   GET /api/student/free-period-tasks/completed
  * @access  Private (Student)
  */
-const getCompletedTasks = async (req, res) => {
-  try {
-    const studentId = req.user.profileId;
+const getCompletedTasks = asyncHandler(async (req, res) => {
+  const studentId = req.user.profileId;
 
-    const completedTasks = await FreePeriodTaskCompletion.find({ studentId })
-      .sort({ completedAt: -1 })
-      .limit(50);
+  const [completedTasks, stats] = await Promise.all([
+    FreePeriodTaskCompletion.find({ studentId }).sort({ completedAt: -1 }).limit(50).lean(),
+    FreePeriodTaskCompletion.getStudentStats(studentId),
+  ]);
 
-    const stats = await FreePeriodTaskCompletion.getStudentStats(studentId);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        completedTasks,
-        stats,
-      },
-    });
-  } catch (error) {
-    console.error('Get completed tasks error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching completed tasks',
-      error: error.message,
-    });
-  }
-};
+  return success(res, 200, 'Completed tasks fetched', { completedTasks, stats });
+});
 
 /**
  * @desc    Get task completion statistics
  * @route   GET /api/student/free-period-tasks/stats
  * @access  Private (Student)
  */
-const getTaskStats = async (req, res) => {
-  try {
-    const studentId = req.user.profileId;
-    const stats = await FreePeriodTaskCompletion.getStudentStats(studentId);
-
-    res.status(200).json({
-      success: true,
-      data: stats,
-    });
-  } catch (error) {
-    console.error('Get task stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching statistics',
-      error: error.message,
-    });
-  }
-};
+const getTaskStats = asyncHandler(async (req, res) => {
+  const studentId = req.user.profileId;
+  const stats = await FreePeriodTaskCompletion.getStudentStats(studentId);
+  return success(res, 200, 'Stats fetched', stats);
+});
 
 module.exports = {
   getFreePeriodSuggestions,
+  getDailyPlan,
   markTaskComplete,
   getCompletedTasks,
   getTaskStats,
+  generateAISuggestions,
+  generateDailyPlanForStudent,
 };

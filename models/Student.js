@@ -90,9 +90,8 @@ const studentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for faster queries
+// Index for faster queries (rollNumber unique index already created by `unique: true` above)
 studentSchema.index({ class: 1, section: 1 });
-studentSchema.index({ rollNumber: 1 });
 studentSchema.index({ name: 'text' });
 
 // Virtual for full name display

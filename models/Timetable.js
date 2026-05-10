@@ -5,7 +5,7 @@ const periodSchema = new mongoose.Schema({
   periodNumber: {
     type: Number,
     required: true,
-    min: 1
+    min: 0   // 0 is reserved for break slots
   },
   subject: {
     type: String,

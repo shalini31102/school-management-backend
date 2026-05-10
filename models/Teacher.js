@@ -80,8 +80,7 @@ const teacherSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for faster queries
-teacherSchema.index({ employeeId: 1 });
+// Index for faster queries (employeeId unique index already created by `unique: true` above)
 teacherSchema.index({ subjects: 1 });
 teacherSchema.index({ assignedClass: 1, assignedSection: 1 });
 teacherSchema.index({ name: 'text' });

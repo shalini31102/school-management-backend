@@ -63,6 +63,8 @@ const taskSubmissionSchema = new mongoose.Schema({
 taskSubmissionSchema.index({ taskId: 1, studentId: 1 });
 taskSubmissionSchema.index({ studentId: 1, submittedAt: -1 });
 taskSubmissionSchema.index({ status: 1 });
+// Composite index for grade-screen queries (student + graded status)
+taskSubmissionSchema.index({ studentId: 1, status: 1 });
 
 // Pre-save middleware to check if submission is late
 taskSubmissionSchema.pre('save', async function(next) {

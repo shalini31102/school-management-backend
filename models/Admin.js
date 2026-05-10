@@ -80,8 +80,7 @@ adminSchema.pre('save', function(next) {
   next();
 });
 
-// Index for faster queries
-adminSchema.index({ employeeId: 1 });
+// Index for faster queries (employeeId unique index already created by `unique: true` above)
 adminSchema.index({ name: 'text' });
 
 // Method to check permission

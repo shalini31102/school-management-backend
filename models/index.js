@@ -11,8 +11,11 @@ const Quiz = require('./Quiz');
 const QuizAttempt = require('./QuizAttempt');
 const SubstituteRequest = require('./SubstituteRequest');
 const StudentPerformance = require('./StudentPerformance');
-const FreePeriodTaskCompletion = require('./FreePeriodTaskCompletion'); 
+const FreePeriodTaskCompletion = require('./FreePeriodTaskCompletion');
 const CustomFreePeriodTask = require('./CustomFreePeriodTask');
+const DailyStudyPlan = require('./DailyStudyPlan');
+const ClassFreePeriodSession = require('./ClassFreePeriodSession');
+const Notification = require('./Notification');
 
 module.exports = {
   User,
@@ -29,4 +32,7 @@ module.exports = {
   StudentPerformance,
   FreePeriodTaskCompletion,
   CustomFreePeriodTask,
+  DailyStudyPlan,
+  ClassFreePeriodSession,
+  Notification,
 };

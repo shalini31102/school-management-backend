@@ -1,353 +1,119 @@
 // controllers/authController.js
 const { User, Student, Teacher, Admin } = require('../models');
 const { generateAccessToken, generateRefreshToken } = require('../utils/jwtUtils');
+const asyncHandler = require('../utils/asyncHandler');
+const { success, error }  = require('../utils/apiResponse');
 
-/**
- * @desc    Register new user (Admin only can create users)
- * @route   POST /api/auth/register
- * @access  Private (Admin)
- */
-const register = async (req, res) => {
-  try {
-    const { email, password, role, profileData } = req.body;
+// ── helpers ───────────────────────────────────────────────────────────────────
+const getProfile = async (role, profileId) => {
+  if (role === 'student') return Student.findById(profileId).lean();
+  if (role === 'teacher') return Teacher.findById(profileId).lean();
+  if (role === 'admin')   return Admin.findById(profileId).lean();
+  return null;
+};
 
-    // Validate required fields
-    if (!email || !password || !role || !profileData) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email, password, role, and profile data'
-      });
-    }
+// ── Register ──────────────────────────────────────────────────────────────────
+const register = asyncHandler(async (req, res) => {
+  const { email, password, role, profileData } = req.body;
 
-    // Check if user already exists
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({
-        success: false,
-        message: 'User with this email already exists'
-      });
-    }
-
-    let profileId;
-
-    // Create profile based on role
-    switch (role) {
-      case 'student':
-        const student = await Student.create(profileData);
-        profileId = student._id;
-        break;
-
-      case 'teacher':
-        const teacher = await Teacher.create(profileData);
-        profileId = teacher._id;
-        break;
-
-      case 'admin':
-        const admin = await Admin.create(profileData);
-        profileId = admin._id;
-        break;
-
-      default:
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid role specified'
-        });
-    }
-
-    // Create user
-    const user = await User.create({
-      email,
-      password,
-      role,
-      profileId
-    });
-
-    // Update profile with userId
-    const ProfileModel = role === 'student' ? Student : role === 'teacher' ? Teacher : Admin;
-    await ProfileModel.findByIdAndUpdate(profileId, { userId: user._id });
-
-    res.status(201).json({
-      success: true,
-      message: `${role.charAt(0).toUpperCase() + role.slice(1)} registered successfully`,
-      data: {
-        userId: user._id,
-        email: user.email,
-        role: user.role,
-        profileId
-      }
-    });
-  } catch (error) {
-    console.error('Register error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error registering user',
-      error: error.message
-    });
+  if (!email || !password || !role || !profileData) {
+    return error(res, 400, 'Please provide email, password, role, and profile data');
   }
-};
 
-/**
- * @desc    Login user
- * @route   POST /api/auth/login
- * @access  Public
- */
-const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
+  const userExists = await User.findOne({ email }).lean();
+  if (userExists) return error(res, 400, 'User with this email already exists');
 
-    // Validate input
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email and password'
-      });
-    }
+  const ProfileModel =
+    role === 'student' ? Student :
+    role === 'teacher' ? Teacher :
+    role === 'admin'   ? Admin   : null;
 
-    // Find user and include password field
-    const user = await User.findOne({ email }).select('+password');
+  if (!ProfileModel) return error(res, 400, 'Invalid role specified');
 
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
-      });
-    }
+  const profile = await ProfileModel.create(profileData);
+  const user    = await User.create({ email, password, role, profileId: profile._id });
+  await ProfileModel.findByIdAndUpdate(profile._id, { userId: user._id });
 
-    // Check if user is active
-    if (!user.isActive) {
-      return res.status(401).json({
-        success: false,
-        message: 'Your account has been deactivated. Please contact administrator.'
-      });
-    }
+  return success(res, 201, `${role.charAt(0).toUpperCase() + role.slice(1)} registered successfully`, {
+    userId: user._id,
+    email:  user.email,
+    role:   user.role,
+    profileId: profile._id,
+  });
+});
 
-    // Check password
-    const isMatch = await user.comparePassword(password);
+// ── Login ─────────────────────────────────────────────────────────────────────
+const login = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return error(res, 400, 'Please provide email and password');
 
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
-      });
-    }
+  const user = await User.findOne({ email }).select('+password');
+  if (!user)           return error(res, 401, 'Invalid credentials');
+  if (!user.isActive)  return error(res, 401, 'Your account has been deactivated. Please contact the administrator.');
 
-    // Get profile data based on role
-    let profile;
-    switch (user.role) {
-      case 'student':
-        profile = await Student.findById(user.profileId);
-        break;
-      case 'teacher':
-        profile = await Teacher.findById(user.profileId);
-        break;
-      case 'admin':
-        profile = await Admin.findById(user.profileId);
-        break;
-    }
+  const isMatch = await user.comparePassword(password);
+  if (!isMatch) return error(res, 401, 'Invalid credentials');
 
-    // Generate tokens
-    const accessToken = generateAccessToken(user._id);
-    const refreshToken = generateRefreshToken(user._id);
+  const profile      = await getProfile(user.role, user.profileId);
+  const accessToken  = generateAccessToken(user._id);
+  const refreshToken = generateRefreshToken(user._id);
 
-    // Save refresh token to user
-    user.refreshToken = refreshToken;
-    user.lastLogin = new Date();
-    await user.save();
+  user.refreshToken = refreshToken;
+  user.lastLogin    = new Date();
+  await user.save();
 
-    res.status(200).json({
-      success: true,
-      message: 'Login successful',
-      data: {
-        user: {
-          id: user._id,
-          email: user.email,
-          role: user.role,
-          profile: profile
-        },
-        accessToken,
-        refreshToken
-      }
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error logging in',
-      error: error.message
-    });
+  return success(res, 200, 'Login successful', {
+    user: { id: user._id, email: user.email, role: user.role, profile },
+    accessToken,
+    refreshToken,
+  });
+});
+
+// ── Get current user ──────────────────────────────────────────────────────────
+const getMe = asyncHandler(async (req, res) => {
+  const user    = await User.findById(req.user.id).lean();
+  const profile = await getProfile(user.role, user.profileId);
+
+  return success(res, 200, 'User fetched', {
+    user: { id: user._id, email: user.email, role: user.role, profile },
+  });
+});
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+const logout = asyncHandler(async (req, res) => {
+  await User.findByIdAndUpdate(req.user.id, { refreshToken: null });
+  return success(res, 200, 'Logged out successfully');
+});
+
+// ── Change password ───────────────────────────────────────────────────────────
+const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return error(res, 400, 'Please provide current and new password');
   }
-};
 
-/**
- * @desc    Get current logged in user
- * @route   GET /api/auth/me
- * @access  Private
- */
-const getMe = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
+  const user = await User.findById(req.user.id).select('+password');
+  const isMatch = await user.comparePassword(currentPassword);
+  if (!isMatch) return error(res, 401, 'Current password is incorrect');
 
-    // Get profile data
-    let profile;
-    switch (user.role) {
-      case 'student':
-        profile = await Student.findById(user.profileId);
-        break;
-      case 'teacher':
-        profile = await Teacher.findById(user.profileId);
-        break;
-      case 'admin':
-        profile = await Admin.findById(user.profileId);
-        break;
-    }
+  user.password = newPassword;
+  await user.save();
+  return success(res, 200, 'Password changed successfully');
+});
 
-    res.status(200).json({
-      success: true,
-      data: {
-        user: {
-          id: user._id,
-          email: user.email,
-          role: user.role,
-          profile: profile
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Get me error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching user data',
-      error: error.message
-    });
-  }
-};
+// ── Refresh token ─────────────────────────────────────────────────────────────
+const refreshToken = asyncHandler(async (req, res) => {
+  const { refreshToken: token } = req.body;
+  if (!token) return error(res, 400, 'Refresh token required');
 
-/**
- * @desc    Logout user
- * @route   POST /api/auth/logout
- * @access  Private
- */
-const logout = async (req, res) => {
-  try {
-    // Clear refresh token
-    await User.findByIdAndUpdate(req.user.id, {
-      refreshToken: null
-    });
+  const { verifyRefreshToken } = require('../utils/jwtUtils');
+  const decoded = verifyRefreshToken(token); // throws on invalid — caught by asyncHandler
 
-    res.status(200).json({
-      success: true,
-      message: 'Logged out successfully'
-    });
-  } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error logging out',
-      error: error.message
-    });
-  }
-};
+  const user = await User.findById(decoded.id).select('+refreshToken');
+  if (!user || user.refreshToken !== token) return error(res, 401, 'Invalid refresh token');
 
-/**
- * @desc    Change password
- * @route   PUT /api/auth/change-password
- * @access  Private
- */
-const changePassword = async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
+  const newAccessToken = generateAccessToken(user._id);
+  return success(res, 200, 'Token refreshed', { accessToken: newAccessToken });
+});
 
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide current and new password'
-      });
-    }
-
-    // Get user with password
-    const user = await User.findById(req.user.id).select('+password');
-
-    // Verify current password
-    const isMatch = await user.comparePassword(currentPassword);
-
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Current password is incorrect'
-      });
-    }
-
-    // Update password
-    user.password = newPassword;
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Password changed successfully'
-    });
-  } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error changing password',
-      error: error.message
-    });
-  }
-};
-
-/**
- * @desc    Refresh access token
- * @route   POST /api/auth/refresh-token
- * @access  Public
- */
-const refreshToken = async (req, res) => {
-  try {
-    const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-      return res.status(400).json({
-        success: false,
-        message: 'Refresh token required'
-      });
-    }
-
-    // Verify refresh token
-    const { verifyRefreshToken } = require('../utils/jwtUtils');
-    const decoded = verifyRefreshToken(refreshToken);
-
-    // Find user
-    const user = await User.findById(decoded.id).select('+refreshToken');
-
-    if (!user || user.refreshToken !== refreshToken) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid refresh token'
-      });
-    }
-
-    // Generate new access token
-    const newAccessToken = generateAccessToken(user._id);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        accessToken: newAccessToken
-      }
-    });
-  } catch (error) {
-    console.error('Refresh token error:', error);
-    res.status(401).json({
-      success: false,
-      message: 'Invalid or expired refresh token'
-    });
-  }
-};
-
-module.exports = {
-  register,
-  login,
-  getMe,
-  logout,
-  changePassword,
-  refreshToken
-};
+module.exports = { register, login, getMe, logout, changePassword, refreshToken };
